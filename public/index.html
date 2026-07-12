@@ -46,12 +46,12 @@ function build(data){
 function tap(g,v,el){
  xhr(BASE+'/declare?group='+encodeURIComponent(g)+'&sail='+encodeURIComponent(v),function(st,txt){
   if(st===200){
+   var resp=JSON.parse(txt);
    var btns=document.getElementById('g_'+g).getElementsByTagName('button');
    for(var i=0;i<btns.length;i++)btns[i].className='';
-   el.className='on';
-   var resp=JSON.parse(txt);
+   if(resp.current){el.className='on';}
    showSet(resp.set);
-   document.getElementById('st').innerHTML=g+' = '+v+' logged '+new Date().toUTCString();
+   document.getElementById('st').innerHTML=g+' = '+(resp.current||'cleared')+' logged '+new Date().toUTCString();
   }else{document.getElementById('st').innerHTML='error: '+txt;}
  });
 }

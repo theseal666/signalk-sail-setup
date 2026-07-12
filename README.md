@@ -6,17 +6,20 @@ SignalK plugin to declare which sails are currently up, for logging and for a
 future per-sail-set polar comparison. Configure your sail inventory as groups
 (headsail, staysail, spinnaker/assy/zero, mainsail — reef points are just
 "sails" within the mainsail group), then tap big toggle buttons to log
-whichever combination is flying. Built to work from a phone and from a
-B&G/Navico MFD tile via [signalk-mfd-plugin](https://github.com/htool/signalk-mfd-plugin).
+whichever combination is flying. Every button is a real toggle: tap a sail to
+set it, tap the same (now highlighted) button again to drop it - no dedicated
+"none"/"off" button needed. Built to work from a phone and from a B&G/Navico
+MFD tile via [signalk-mfd-plugin](https://github.com/htool/signalk-mfd-plugin).
 
 ## Configuration
 
 Under **Server → Plugin Config → Sail Setup**:
 
 * **Sail groups** — each group is a name (becomes the SignalK path `sails.<name>`)
-  and a comma-separated list of sails, e.g. `headsail: JZ, J2, J3, J3.5, none`.
-  Add/remove/rename groups and sails freely. Group names must be unique and
-  can't be `set` (that path is reserved, see below).
+  and a comma-separated list of sails, e.g. `headsail: JZ, J2, J3, J3.5`. No
+  need to list a `none`/`off` entry - tapping the active sail again clears the
+  group. Add/remove/rename groups and sails freely. Group names must be
+  unique and can't be `set` (that path is reserved, see below).
 * **Re-emit interval** — how often (seconds) the current state is re-published
   even with no change, so it's present in every log window. `0` disables it.
 
