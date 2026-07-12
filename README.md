@@ -20,12 +20,16 @@ Under **Server → Plugin Config → Sail Setup**:
 * **Re-emit interval** — how often (seconds) the current state is re-published
   even with no change, so it's present in every log window. `0` disables it.
 
+<img src="IMG/plugin-config.png" alt="Sail groups configuration page" width="500">
+
 ## Published paths
 
 | Path | Meaning |
 |---|---|
 | `sails.<group>` | Current sail name for one group, e.g. `sails.headsail = "J2"` |
 | `sails.set` | Array of every currently active sail across all groups, e.g. `["J2","SS","Full-Reef1"]`; empty/`none` slots omitted. One atomic path for a full-rig snapshot — the join key for any future per-sail-set polar comparison. |
+
+<img src="IMG/signalk-data-inspector.png" alt="SignalK Data Inspector showing sails.* deltas" width="600">
 
 Every change is also appended to a CSV ground-truth log
 (`<SignalK data dir>/signalk-sail-setup/sail-log.csv`, columns
@@ -40,6 +44,8 @@ polar).
 * `GET /plugins/signalk-sail-setup/declare?group=<name>&sail=<sail>` — declare a
   sail as set (GET on purpose — works from MFD browsers that can't do fetch/POST)
 * Webapp: `http://<server>:3000/signalk-sail-setup` — the toggle-button UI
+
+<img src="IMG/webapp-toggle-ui.png" alt="Toggle-button webapp with current rig shown at top" width="600">
 
 ## Using it on a B&G/Navico MFD
 

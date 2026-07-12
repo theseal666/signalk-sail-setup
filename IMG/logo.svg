@@ -6,11 +6,11 @@
   <linearGradient id="cur" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0%" stop-color="#4fd8ff"/><stop offset="100%" stop-color="#2fd1b0"/>
   </linearGradient>
-  <linearGradient id="dark" x1="0" y1="0" x2="0" y2="1">
+  <linearGradient id="dark" x1="0" y1="0" x2="1" y2="1">
     <stop offset="0%" stop-color="#4a5b70"/><stop offset="100%" stop-color="#12171f"/>
   </linearGradient>
-  <linearGradient id="dark2" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0%" stop-color="#63788e"/><stop offset="100%" stop-color="#1a222c"/>
+  <linearGradient id="spin" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#f4faff"/><stop offset="100%" stop-color="#a9def0"/>
   </linearGradient>
 </defs>
 <rect width="1024" height="1024" fill="url(#bg)"/>
@@ -25,38 +25,37 @@
   <line x1="779" y1="183" x2="245" y2="717"/>
 </g>
 
-<!-- bow spray -->
-<path d="M 336,558 C 316,548 300,552 286,540" fill="none" stroke="#bfeaff" stroke-width="4" stroke-linecap="round" opacity="0.4"/>
-<path d="M 344,572 C 322,566 306,572 292,564" fill="none" stroke="#bfeaff" stroke-width="3" stroke-linecap="round" opacity="0.25"/>
-
-<!-- hull -->
-<path d="M 356,558 C 400,600 624,600 668,558 C 662,544 402,544 356,558 Z" fill="#e8f1f8" stroke="#0a1a2e" stroke-width="4"/>
+<!-- hull, driving forward -->
+<path d="M 330,560 C 380,602 620,602 668,558 C 660,544 400,544 348,548 C 336,550 326,554 330,560 Z" fill="#e8f1f8" stroke="#0a1a2e" stroke-width="4"/>
 <rect x="500" y="551" width="24" height="14" fill="#0a1a2e"/>
 
-<!-- masthead pennant -->
-<path d="M 512,150 L 555,165 L 512,180 Z" fill="#ff9f43" stroke="#081426" stroke-width="3"/>
-<circle cx="512" cy="150" r="6" fill="#e8f1f8"/>
-<!-- mast -->
-<line x1="512" y1="150" x2="512" y2="560" stroke="#0a1a2e" stroke-width="7" stroke-linecap="round"/>
+<!-- mast, raked -->
+<line x1="540" y1="150" x2="512" y2="560" stroke="#0a1a2e" stroke-width="7" stroke-linecap="round"/>
+<circle cx="540" cy="150" r="6" fill="#e8f1f8"/>
 
-<!-- outer headsail (genoa/jib) -->
-<path d="M 500,232 C 460,320 400,430 360,520 L 472,548 Z" fill="url(#dark)" stroke="#6fc8e8" stroke-width="2" opacity="0.96"/>
-<!-- inner headsail (self-tacking staysail) -->
-<path d="M 512,320 C 484,370 452,430 424,486 L 500,548 Z" fill="url(#dark2)" stroke="#6fc8e8" stroke-width="2" opacity="0.96"/>
+<!-- genoa (dark), forward of mast -->
+<path d="M 500,222 C 440,280 390,400 366,516 L 500,550 Z" fill="url(#dark)" stroke="#6fc8e8" stroke-width="2" opacity="0.95"/>
 
-<!-- mainsail -->
-<path d="M 512,205 C 560,260 598,405 610,542 L 512,556 Z" fill="url(#cur)" stroke="#0a1a2e" stroke-width="3"/>
+<!-- mainsail, aft of mast, powered up -->
+<path d="M 540,150 C 610,230 650,400 660,545 L 512,558 Z" fill="url(#cur)" stroke="#0a1a2e" stroke-width="3"/>
 
-<!-- toggle switches: which sail is set (double headsail on) -->
+<!-- spinnaker / staysail, big and forward, flying -->
+<path d="M 542,168 C 420,204 296,258 258,358 C 306,412 356,470 362,540 C 424,458 486,318 542,168 Z"
+      fill="url(#spin)" stroke="#eaf7ff" stroke-width="2.5" opacity="0.94"/>
+
+<!-- bow spray -->
+<path d="M 340,556 C 300,548 268,556 236,540 C 262,568 300,580 332,584 C 316,596 288,596 264,606 C 306,610 344,600 366,580 Z"
+      fill="#eaf7ff" opacity="0.85"/>
+<path d="M 300,528 C 274,514 248,516 224,500" fill="none" stroke="#eaf7ff" stroke-width="4" stroke-linecap="round" opacity="0.4"/>
+
+<!-- toggle switches: main, genoa, spinnaker staysail - all set -->
 <g>
-  <rect x="387" y="742" width="52" height="28" rx="14" fill="url(#cur)" stroke="#0a1a2e" stroke-width="2.5"/>
-  <circle cx="426" cy="756" r="9" fill="#ffffff"/>
-  <rect x="453" y="742" width="52" height="28" rx="14" fill="url(#cur)" stroke="#0a1a2e" stroke-width="2.5"/>
-  <circle cx="492" cy="756" r="9" fill="#ffffff"/>
-  <rect x="519" y="742" width="52" height="28" rx="14" fill="#16324f" stroke="#2f7fb8" stroke-width="2.5" opacity="0.85"/>
-  <circle cx="532" cy="756" r="9" fill="#5c7f9c"/>
-  <rect x="585" y="742" width="52" height="28" rx="14" fill="url(#cur)" stroke="#0a1a2e" stroke-width="2.5"/>
-  <circle cx="624" cy="756" r="9" fill="#ffffff"/>
+  <rect x="420" y="742" width="52" height="28" rx="14" fill="url(#cur)" stroke="#0a1a2e" stroke-width="2.5"/>
+  <circle cx="459" cy="756" r="9" fill="#ffffff"/>
+  <rect x="486" y="742" width="52" height="28" rx="14" fill="url(#cur)" stroke="#0a1a2e" stroke-width="2.5"/>
+  <circle cx="525" cy="756" r="9" fill="#ffffff"/>
+  <rect x="552" y="742" width="52" height="28" rx="14" fill="url(#cur)" stroke="#0a1a2e" stroke-width="2.5"/>
+  <circle cx="591" cy="756" r="9" fill="#ffffff"/>
 </g>
 <g>
   <rect x="700" y="120" width="150" height="96" rx="22" fill="#0d2036" stroke="#2f7fb8" stroke-width="5"/>
