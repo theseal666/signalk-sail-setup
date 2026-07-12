@@ -23,6 +23,11 @@ Under **Server → Plugin Config → Sail Setup**:
 * **Re-emit interval** — how often (seconds) the current state is re-published
   even with no change, so it's present in every log window. `0` disables it.
 
+If an existing config still lists `none` as a sail, it keeps working exactly
+as before (tapping it clears the group) - it's just redundant now that every
+button toggles, so feel free to delete it from the comma-separated list
+whenever convenient. No rush and no harm in leaving it.
+
 <img src="IMG/plugin-config.png" alt="Sail groups configuration page" width="500">
 
 ## Published paths
@@ -30,7 +35,7 @@ Under **Server → Plugin Config → Sail Setup**:
 | Path | Meaning |
 |---|---|
 | `sails.<group>` | Current sail name for one group, e.g. `sails.headsail = "J2"` |
-| `sails.set` | Array of every currently active sail across all groups, e.g. `["J2","SS","Full-Reef1"]`; empty/`none` slots omitted. One atomic path for a full-rig snapshot — the join key for any future per-sail-set polar comparison. |
+| `sails.set` | Array of every currently active sail across all groups, e.g. `["J2","SS","Full-Reef1"]`; cleared/empty slots omitted. One atomic path for a full-rig snapshot — the join key for any future per-sail-set polar comparison. |
 
 <img src="IMG/signalk-data-inspector.png" alt="SignalK Data Inspector showing sails.* deltas" width="600">
 
@@ -44,8 +49,9 @@ polar).
 ## Endpoints
 
 * `GET /plugins/signalk-sail-setup/setup` — current groups, sails and state (JSON)
-* `GET /plugins/signalk-sail-setup/declare?group=<name>&sail=<sail>` — declare a
-  sail as set (GET on purpose — works from MFD browsers that can't do fetch/POST)
+* `GET /plugins/signalk-sail-setup/declare?group=<name>&sail=<sail>` — toggle a
+  sail: sets it if it isn't the group's current sail, clears the group if it
+  is (GET on purpose — works from MFD browsers that can't do fetch/POST)
 * Webapp: `http://<server>:3000/signalk-sail-setup` — the toggle-button UI
 
 <img src="IMG/webapp-toggle-ui.png" alt="Toggle-button webapp with current rig shown at top" width="600">
