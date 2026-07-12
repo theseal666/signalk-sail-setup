@@ -43,6 +43,7 @@ function showSet(set){
 }
 function fmtH(h){return (h==null?0:h).toFixed(1)+'h';}
 function showHours(){
+ if(!lastHours){document.getElementById('hrs').innerHTML='';return;}
  var rows='';
  for(var i=0;i<groupOrder.length;i++){var g=groupOrder[i];var h=lastHours[g]||{totalHours:0,bySailHours:{}};
   var bySail=[];
@@ -62,7 +63,7 @@ function build(data){
   html+='</div>';}
  document.getElementById('app').innerHTML=html;
  showSet(data.set);
- lastHours=data.hours||{};
+ lastHours=data.hours||null;
  showHours();
 }
 function tap(g,v,el){
@@ -73,7 +74,7 @@ function tap(g,v,el){
    for(var i=0;i<btns.length;i++)btns[i].className='';
    if(resp.current){el.className='on';}
    showSet(resp.set);
-   lastHours[g]=resp.hours;
+   if(resp.hours){if(!lastHours)lastHours={};lastHours[g]=resp.hours;}else{lastHours=null;}
    showHours();
    document.getElementById('st').innerHTML=g+' = '+(resp.current||'cleared')+' logged '+new Date().toUTCString();
   }else{document.getElementById('st').innerHTML='error: '+txt;}

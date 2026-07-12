@@ -22,6 +22,10 @@ Under **Server → Plugin Config → Sail Setup**:
   unique and can't be `set` (that path is reserved, see below).
 * **Re-emit interval** — how often (seconds) the current state is re-published
   even with no change, so it's present in every log window. `0` disables it.
+* **Hours tracking** — on by default; turn it off to skip accumulating and
+  publishing hours entirely (no `sails.hours.<group>`, no `/hours` data, no
+  hours table in the webapp). Turning it back on later doesn't retroactively
+  count the time it was off - the clock just starts fresh from then on.
 
 If an existing config still lists `none` as a sail, it keeps working exactly
 as before (tapping it clears the group) - it's just redundant now that every

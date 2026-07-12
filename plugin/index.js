@@ -40,6 +40,11 @@ module.exports = function (app) {
         type: 'number',
         title: 'Re-emit current state every N seconds (0 = off). Keeps value in every log window.',
         default: 60
+      },
+      hoursTracking: {
+        type: 'boolean',
+        title: 'Track and log hours-in-use per sail/group (sails.hours.<group>, /hours endpoint, webapp table)',
+        default: true
       }
     }
   }
@@ -79,6 +84,8 @@ module.exports = function (app) {
       }]
     })
   }
+
+  function hoursEnabled () { return options.hoursTracking !== false }
 
   function ensureGroupHours (g) {
     if (!hours[g]) hours[g] = { bySail: {}, total: 0 }
@@ -146,7 +153,7 @@ module.exports = function (app) {
   function emitAll () {
     Object.keys(state).forEach(emitGroup)
     emitSet()
-    emitHours()
+    if (hoursEnabled()) emitHours()
   }
 
   function saveState () {
@@ -167,13 +174,27 @@ module.exports = function (app) {
       hours = saved.hours || {}
       activeSince = saved.activeSince || {}
     } catch (e) { hours = {}; activeSince = {} }
-    // If a group was active when we last shut down, its clock (activeSince) survives
-    // the restart, so a plugin/server restart never resets an in-progress sail's hours -
-    // it's still the same sail flying, just a reload of the process watching it.
+    if (!hoursEnabled()) {
+      // Tracking is off - drop any running clock so it can't silently accrue a huge
+      // "elapsed" span (covering the whole time it was switched off) if re-enabled later.
+      activeSince = {}
+    } else {
+      // If a group was active when we last shut down, its clock (activeSince) survives
+      // the restart, so a plugin/server restart never resets an in-progress sail's hours -
+      // it's still the same sail flying, just a reload of the process watching it. But if
+      // a group is set and has no clock (tracking was just turned on, or it was set while
+      // tracking was off), start counting from now - not retroactively.
+      groups().forEach(g => {
+        if (state[g.name] && !activeSince[g.name]) activeSince[g.name] = Date.now()
+      })
+    }
     emitAll()
     const n = options.reemitSeconds === undefined ? 60 : options.reemitSeconds
     if (n > 0) {
-      timer = setInterval(() => { settleAll(); saveHours(); emitAll() }, n * 1000)
+      timer = setInterval(() => {
+        if (hoursEnabled()) { settleAll(); saveHours() }
+        emitAll()
+      }, n * 1000)
     }
     app.setPluginStatus('Running')
   }
@@ -182,9 +203,12 @@ module.exports = function (app) {
 
   plugin.registerWithRouter = function (router) {
     router.get('/setup', (req, res) => {
-      res.json({ groups: groups(), current: state, set: currentSet(), hours: hoursSummary() })
+      res.json({ groups: groups(), current: state, set: currentSet(), hours: hoursEnabled() ? hoursSummary() : null })
     })
-    router.get('/hours', (req, res) => { res.json(hoursSummary()) })
+    router.get('/hours', (req, res) => {
+      if (!hoursEnabled()) return res.json({ enabled: false })
+      res.json(hoursSummary())
+    })
     // GET so it works from the most limited MFD browsers (no fetch/POST needed)
     // Every button is a real toggle: tapping the sail that's already set for this
     // group clears the group instead of re-setting it - no dedicated "none" button needed.
@@ -195,15 +219,17 @@ module.exports = function (app) {
       if (!grp || grp.sails.indexOf(v) < 0) {
         return res.status(400).json({ ok: false, error: 'unknown group or sail' })
       }
-      settle(g) // bank whatever time the previous sail (if any) has accrued before switching
+      if (hoursEnabled()) settle(g) // bank whatever time the previous sail (if any) has accrued before switching
       const turningOff = state[g] === v
       state[g] = turningOff ? null : v
-      activeSince[g] = turningOff ? null : Date.now()
+      if (hoursEnabled()) {
+        activeSince[g] = turningOff ? null : Date.now()
+        saveHours()
+      }
       saveState()
-      saveHours()
       emitGroup(g)
       emitSet()
-      emitHours()
+      if (hoursEnabled()) emitHours()
       // CSV ground-truth log: one row per change, plus the full set at that moment so you
       // can grep the file for a sail name and see every time it was part of the rig,
       // not just the moment its own group changed. Empty sail cell = group was cleared.
@@ -213,7 +239,7 @@ module.exports = function (app) {
         const setField = '"' + currentSet().join('|') + '"'
         fs.appendFileSync(csv, new Date().toISOString() + ',' + g + ',' + (state[g] || '') + ',' + setField + '\n')
       } catch (e) { app.error('' + e) }
-      res.json({ ok: true, group: g, current: state[g], set: currentSet(), hours: hoursSummary()[g] })
+      res.json({ ok: true, group: g, current: state[g], set: currentSet(), hours: hoursEnabled() ? hoursSummary()[g] : null })
     })
   }
 
