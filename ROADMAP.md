@@ -64,6 +64,39 @@ per sail in the inventory. No reset mechanism - accumulates forever from
 install; retiring a physical sail just means renaming it in config (e.g.
 `J2` → `J2-old`) to freeze its total and start fresh under the old name.
 
+## Speed gate + auto-clear at the dock (done 2026-07-13)
+
+Real problem: forget to untoggle sails at the end of the day and hours quietly
+rack up all night. Two independent, both opt-in (off by default, no behavior
+change for existing configs unless set):
+
+- **minSpeedKnots** pauses hours accumulation (not sails.set, not the CSV -
+  those still reflect whatever's actually toggled) below a speed threshold.
+  Defaults to `navigation.speedOverGround` rather than `speedThroughWater`
+  deliberately - a paddlewheel isn't direction-aware, and backing down under
+  engine to douse the main (or drifting backward while raising it
+  head-to-wind) spins it just like sailing forward would. GPS SOG doesn't
+  have that failure mode. Fails open (keeps counting) with no data or a
+  stale reading, so a sensor dropout can't silently zero out real hours.
+
+- **autoClearMinutes** goes a step further: if genuinely stationary (per the
+  same speed gate) for that many minutes with nothing touched, it clears
+  every toggled sail outright, not just pausing their hours - "there's no
+  way in hell people are sailing now." The trap we almost fell into: raising
+  the main is *also* usually done at ~0kn, head to wind. A naive "sail is
+  set + stationary" timer would auto-clear the sail you just hoisted if the
+  hoist takes longer than the threshold. Fixed by resetting the stationary
+  countdown on every button press, not just every speed update - active
+  interaction is itself evidence someone's aboard, independent of whether
+  the boat is actually moving yet. Auto-clears are tagged `trigger=auto` in
+  the CSV (vs `user` for a real press) so the log stays honest about what
+  happened.
+
+Implementation is event-based (subscribes to the speed path via
+`app.streambundle`, checks on every new value plus a periodic tick as a
+fallback) rather than polling, so it reacts as fast as the boat's own speed
+source updates.
+
 ## Deferred / future work
 
 - **Per-sail-set polar** - correlate `sails.set` combos against boat speed /

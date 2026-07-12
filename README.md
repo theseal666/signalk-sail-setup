@@ -26,6 +26,29 @@ Under **Server → Plugin Config → Sail Setup**:
   publishing hours entirely (no `sails.hours.<group>`, no `/hours` data, no
   hours table in the webapp). Turning it back on later doesn't retroactively
   count the time it was off - the clock just starts fresh from then on.
+* **Min speed (knots)** — pauses hours accumulation below this speed, so
+  forgetting to clear a sail at the dock doesn't quietly log overnight hours.
+  `0` (default) disables this - hours always count. Checked against
+  **Speed path**, which defaults to `navigation.speedOverGround` (GPS)
+  rather than `navigation.speedThroughWater`: a paddlewheel usually isn't
+  direction-aware, so backing down under engine to douse the main - or the
+  boat drifting backward while you get the main up head-to-wind - would spin
+  it and read as "moving" even at the dock. GPS speed-over-ground doesn't
+  have that problem. If the speed path has no data (or it goes stale for
+  more than 2 minutes), hours keep counting rather than silently freezing -
+  a sensor dropout shouldn't cost you real sailing hours.
+* **Auto-clear (minutes)** — needs Min speed set too. If the boat stays
+  below Min speed continuously for this many minutes, every sail still
+  toggled on gets automatically cleared - "there's no way in hell people are
+  sailing now" - so a forgotten sail doesn't sit "hoisted" into the next
+  morning. `0` (default) disables this. Any button press resets the
+  countdown, so a slow hoist while sitting head-to-wind at ~0 knots (normal
+  when raising the main) never gets auto-cleared out from under you - only
+  genuine, untouched silence at low speed triggers it. Pick a duration long
+  enough to cover your slowest realistic hoist/rig-fiddling (15-30 minutes
+  is a safer starting point than anything aggressive). Auto-clears are
+  logged to the CSV with `trigger=auto` so they're distinguishable from a
+  real button press.
 
 If an existing config still lists `none` as a sail, it keeps working exactly
 as before (tapping it clears the group) - it's just redundant now that every
@@ -55,10 +78,11 @@ server restart doesn't lose time for a sail that's still up when it restarts.
 
 Every change is also appended to a CSV ground-truth log
 (`<SignalK data dir>/signalk-sail-setup/sail-log.csv`, columns
-`utc,group,sail,set`) so you can grep for a sail name and see every time it
-was part of the rig, not just the moment its own group changed. See
-[ROADMAP.md](ROADMAP.md) for planned work (hourly heartbeat logging, per-sail
-polar).
+`utc,group,sail,set,trigger`) so you can grep for a sail name and see every
+time it was part of the rig, not just the moment its own group changed.
+`trigger` is `user` for a button press or `auto` for the at-the-dock
+auto-clear. See [ROADMAP.md](ROADMAP.md) for planned work (per-sail-set
+polar comparison).
 
 ## Endpoints
 

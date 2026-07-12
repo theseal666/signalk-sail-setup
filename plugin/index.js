@@ -15,6 +15,9 @@ module.exports = function (app) {
   let timer = null
   let stateFile = null
   let hoursFile = null
+  let unsubscribeSpeed = null
+  let lastSpeedMs = null   // last known speed, m/s (SignalK SI)
+  let lastSpeedTs = null   // when we last heard from speedPath
 
   plugin.schema = {
     type: 'object',
@@ -45,6 +48,21 @@ module.exports = function (app) {
         type: 'boolean',
         title: 'Track and log hours-in-use per sail/group (sails.hours.<group>, /hours endpoint, webapp table)',
         default: true
+      },
+      minSpeedKnots: {
+        type: 'number',
+        title: 'Pause hours tracking below this speed in knots (e.g. 1) - stops sails logging hours if you forget to clear them at the dock. 0 = disabled, always count (default).',
+        default: 0
+      },
+      speedPath: {
+        type: 'string',
+        title: 'SignalK path to check against minSpeedKnots',
+        default: 'navigation.speedOverGround'
+      },
+      autoClearMinutes: {
+        type: 'number',
+        title: 'Auto-clear every toggled sail after this many minutes continuously below minSpeedKnots (0 = disabled). Needs minSpeedKnots set too - this is the "forgot to douse at the dock" safety net.',
+        default: 0
       }
     }
   }
@@ -87,6 +105,34 @@ module.exports = function (app) {
 
   function hoursEnabled () { return options.hoursTracking !== false }
 
+  // Speed gate: pause hours accumulation below minSpeedKnots, so leaving a sail
+  // toggled on overnight at the dock/mooring doesn't quietly rack up hours. Defaults
+  // to navigation.speedOverGround (GPS) rather than speedThroughWater - a paddlewheel
+  // isn't direction-aware, so backing down to douse the main would spin it and read as
+  // "moving" even though you're basically still at the dock. GPS SOG doesn't have that
+  // problem. Fails open (counts hours) if the threshold is 0, if no speed data has ever
+  // been seen, or if the last reading is stale - a sensor dropout shouldn't silently
+  // zero out real sailing hours.
+  function subscribeSpeed () {
+    const p = (options.speedPath || 'navigation.speedOverGround').trim()
+    if (!p || !app.streambundle) return
+    try {
+      unsubscribeSpeed = app.streambundle.getSelfStream(p).onValue(v => {
+        lastSpeedMs = v
+        lastSpeedTs = Date.now()
+        checkAutoClear()
+      })
+    } catch (e) { app.error('' + e) }
+  }
+
+  function isMoving () {
+    const minKn = options.minSpeedKnots || 0
+    if (minKn <= 0) return true // gating disabled
+    if (lastSpeedTs == null) return true // never heard from speedPath - fail open
+    if ((Date.now() - lastSpeedTs) / 1000 > 120) return true // stale reading - fail open
+    return (lastSpeedMs || 0) >= minKn * 0.514444
+  }
+
   function ensureGroupHours (g) {
     if (!hours[g]) hours[g] = { bySail: {}, total: 0 }
     return hours[g]
@@ -97,16 +143,18 @@ module.exports = function (app) {
   // hours keep counting across Full/Reef1/Reef2 transitions: every settle adds to
   // BOTH the specific sail's bucket and the group total, regardless of which sail it
   // was, so switching reef points never loses time off the group's running total -
-  // it just splits it between buckets.
+  // it just splits it between buckets. If the speed gate says we're not moving, the
+  // elapsed span is discarded instead of banked - that's the "at the dock" pause.
   function settle (g) {
     const since = activeSince[g]
     const sail = state[g]
     if (!since || !sail) return
     const elapsed = Math.max(0, (Date.now() - since) / 1000)
+    activeSince[g] = Date.now()
+    if (!isMoving()) return
     const h = ensureGroupHours(g)
     h.bySail[sail] = (h.bySail[sail] || 0) + elapsed
     h.total += elapsed
-    activeSince[g] = Date.now()
   }
 
   function settleAll () { Object.keys(activeSince).forEach(settle) }
@@ -164,6 +212,48 @@ module.exports = function (app) {
     try { fs.writeFileSync(hoursFile, JSON.stringify({ hours, activeSince })) } catch (e) { app.error('' + e) }
   }
 
+  // CSV ground-truth log: one row per change, plus the full set at that moment so you
+  // can grep the file for a sail name and see every time it was part of the rig, not
+  // just the moment its own group changed. Empty sail cell = group was cleared.
+  // 'trigger' distinguishes a button press ('user') from the auto-clear-at-the-dock
+  // safety net ('auto'), so the log stays trustworthy about what actually happened.
+  function logChange (g, trigger) {
+    try {
+      const csv = path.join(app.getDataDirPath(), 'sail-log.csv')
+      if (!fs.existsSync(csv)) fs.writeFileSync(csv, 'utc,group,sail,set,trigger\n')
+      const setField = '"' + currentSet().join('|') + '"'
+      fs.appendFileSync(csv, new Date().toISOString() + ',' + g + ',' + (state[g] || '') + ',' + setField + ',' + trigger + '\n')
+    } catch (e) { app.error('' + e) }
+  }
+
+  // "There is no way in hell people are sailing now": if the boat has been under the
+  // speed-gate threshold continuously for autoClearMinutes, drop whatever's still
+  // toggled on so a forgotten sail doesn't sit "hoisted" (and out of sync with reality)
+  // into the next morning. Only does anything if both minSpeedKnots and
+  // autoClearMinutes are configured - off by default.
+  let stationarySince = null
+  function checkAutoClear () {
+    const minutes = options.autoClearMinutes || 0
+    if (minutes <= 0) return
+    if (isMoving()) { stationarySince = null; return }
+    if (stationarySince == null) { stationarySince = Date.now(); return }
+    if ((Date.now() - stationarySince) / 60000 < minutes) return
+    const activeGroups = groups().filter(g => state[g.name])
+    if (!activeGroups.length) { stationarySince = null; return }
+    activeGroups.forEach(g => {
+      if (hoursEnabled()) { settle(g.name); activeSince[g.name] = null }
+      state[g.name] = null
+      emitGroup(g.name)
+      logChange(g.name, 'auto')
+    })
+    saveState()
+    if (hoursEnabled()) saveHours()
+    emitSet()
+    if (hoursEnabled()) emitHours()
+    app.setPluginStatus('Auto-cleared ' + activeGroups.map(g => g.name).join(', ') + ' after ' + minutes + 'min stationary')
+    stationarySince = null
+  }
+
   plugin.start = function (opts) {
     options = opts || {}
     stateFile = path.join(app.getDataDirPath(), 'current-sails.json')
@@ -188,18 +278,23 @@ module.exports = function (app) {
         if (state[g.name] && !activeSince[g.name]) activeSince[g.name] = Date.now()
       })
     }
+    if ((options.minSpeedKnots || 0) > 0) subscribeSpeed()
     emitAll()
     const n = options.reemitSeconds === undefined ? 60 : options.reemitSeconds
     if (n > 0) {
       timer = setInterval(() => {
         if (hoursEnabled()) { settleAll(); saveHours() }
+        checkAutoClear() // fallback in case speedPath isn't updating fast enough on its own
         emitAll()
       }, n * 1000)
     }
     app.setPluginStatus('Running')
   }
 
-  plugin.stop = function () { if (timer) { clearInterval(timer); timer = null } }
+  plugin.stop = function () {
+    if (timer) { clearInterval(timer); timer = null }
+    if (unsubscribeSpeed) { unsubscribeSpeed(); unsubscribeSpeed = null }
+  }
 
   plugin.registerWithRouter = function (router) {
     router.get('/setup', (req, res) => {
@@ -219,6 +314,11 @@ module.exports = function (app) {
       if (!grp || grp.sails.indexOf(v) < 0) {
         return res.status(400).json({ ok: false, error: 'unknown group or sail' })
       }
+      // Any button press is evidence someone's actively there - resets the auto-clear
+      // countdown. Otherwise hoisting the main head-to-wind (boat sitting at ~0kn or
+      // even briefly reversing while you sort out halyards/sheets) would look exactly
+      // like "abandoned at the dock" and could clear itself mid-hoist.
+      stationarySince = null
       if (hoursEnabled()) settle(g) // bank whatever time the previous sail (if any) has accrued before switching
       const turningOff = state[g] === v
       state[g] = turningOff ? null : v
@@ -230,15 +330,7 @@ module.exports = function (app) {
       emitGroup(g)
       emitSet()
       if (hoursEnabled()) emitHours()
-      // CSV ground-truth log: one row per change, plus the full set at that moment so you
-      // can grep the file for a sail name and see every time it was part of the rig,
-      // not just the moment its own group changed. Empty sail cell = group was cleared.
-      try {
-        const csv = path.join(app.getDataDirPath(), 'sail-log.csv')
-        if (!fs.existsSync(csv)) fs.writeFileSync(csv, 'utc,group,sail,set\n')
-        const setField = '"' + currentSet().join('|') + '"'
-        fs.appendFileSync(csv, new Date().toISOString() + ',' + g + ',' + (state[g] || '') + ',' + setField + '\n')
-      } catch (e) { app.error('' + e) }
+      logChange(g, 'user')
       res.json({ ok: true, group: g, current: state[g], set: currentSet(), hours: hoursEnabled() ? hoursSummary()[g] : null })
     })
   }
