@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs>
+  <radialGradient id="bg" cx="50%" cy="38%" r="80%">
+    <stop offset="0%" stop-color="#122c49"/><stop offset="100%" stop-color="#081426"/>
+  </radialGradient>
+  <linearGradient id="cur" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#4fd8ff"/><stop offset="100%" stop-color="#2fd1b0"/>
+  </linearGradient>
+</defs>
+<rect width="1024" height="1024" fill="url(#bg)"/>
+<circle cx="512" cy="450" r="392" fill="none" stroke="#2f7fb8" stroke-width="7" opacity="0.85"/>
+<circle cx="512" cy="450" r="378" fill="#0d2036" opacity="0.6"/>
+<g stroke="#1f4468" stroke-width="2.5" fill="none" opacity="0.9">
+  <circle cx="512" cy="450" r="254"/>
+  <circle cx="512" cy="450" r="130"/>
+  <line x1="512" y1="72" x2="512" y2="828"/>
+  <line x1="134" y1="450" x2="890" y2="450"/>
+  <line x1="245" y1="183" x2="779" y2="717"/>
+  <line x1="779" y1="183" x2="245" y2="717"/>
+</g>
+<!-- masthead wind pennant -->
+<g stroke="#0a1a2e" stroke-width="3">
+  <line x1="512" y1="150" x2="512" y2="560" stroke="#0a1a2e" stroke-width="0"/>
+</g>
+<path d="M 512,150 L 555,165 L 512,180 Z" fill="#ff9f43" stroke="#081426" stroke-width="3"/>
+<circle cx="512" cy="150" r="6" fill="#e8f1f8"/>
+<!-- mast -->
+<line x1="512" y1="150" x2="512" y2="560" stroke="#0a1a2e" stroke-width="7" stroke-linecap="round"/>
+<!-- mainsail glow + shape (aft of mast) -->
+<path d="M 512,205 C 566,262 604,410 616,545 L 512,558 Z" fill="url(#cur)" opacity="0.25"/>
+<path d="M 512,205 C 560,260 598,405 610,542 L 512,556 Z" fill="url(#cur)" stroke="#0a1a2e" stroke-width="3"/>
+<!-- headsail glow + shape (forward of mast) -->
+<path d="M 512,270 C 456,326 402,428 360,528 L 512,558 Z" fill="url(#cur)" opacity="0.18"/>
+<path d="M 512,272 C 462,328 412,424 374,524 L 512,556 Z" fill="url(#cur)" stroke="#0a1a2e" stroke-width="3" opacity="0.9"/>
+<!-- hull -->
+<path d="M 356,558 C 400,600 624,600 668,558 C 662,544 402,544 356,558 Z" fill="#e8f1f8" stroke="#0a1a2e" stroke-width="4"/>
+<rect x="500" y="552" width="24" height="14" fill="#0a1a2e"/>
+<!-- toggle switches: which sail is set -->
+<g>
+  <rect x="387" y="742" width="52" height="28" rx="14" fill="url(#cur)" stroke="#0a1a2e" stroke-width="2.5"/>
+  <circle cx="426" cy="756" r="9" fill="#ffffff"/>
+  <rect x="453" y="742" width="52" height="28" rx="14" fill="#16324f" stroke="#2f7fb8" stroke-width="2.5" opacity="0.85"/>
+  <circle cx="466" cy="756" r="9" fill="#5c7f9c"/>
+  <rect x="519" y="742" width="52" height="28" rx="14" fill="url(#cur)" stroke="#0a1a2e" stroke-width="2.5"/>
+  <circle cx="558" cy="756" r="9" fill="#ffffff"/>
+  <rect x="585" y="742" width="52" height="28" rx="14" fill="#16324f" stroke="#2f7fb8" stroke-width="2.5" opacity="0.85"/>
+  <circle cx="598" cy="756" r="9" fill="#5c7f9c"/>
+</g>
+<g>
+  <rect x="700" y="120" width="150" height="96" rx="22" fill="#0d2036" stroke="#2f7fb8" stroke-width="5"/>
+  <text x="775" y="190" font-family="DejaVu Sans" font-weight="bold" font-size="62" fill="#4fd8ff" text-anchor="middle">SK</text>
+</g>
+<text x="512" y="922" font-family="DejaVu Sans" font-weight="bold" font-size="168" fill="#ffffff" text-anchor="middle">SAILS</text>
+<text x="512" y="982" font-family="DejaVu Sans" font-weight="bold" font-size="44" fill="#2fd1b0" text-anchor="middle">S E T U P</text>
+</svg>

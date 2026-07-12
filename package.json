@@ -1,0 +1,12 @@
+{
+  "name": "signalk-sail-setup",
+  "version": "0.1.0",
+  "description": "Declare which sails are up. Configurable inventory, big-button webapp (phone + B&G MFD via signalk-mfd-plugin), logs to SignalK paths sails.*",
+  "main": "plugin/index.js",
+  "keywords": ["signalk-node-server-plugin", "signalk-webapp", "signalk-category-utility"],
+  "signalk": {
+    "appIcon": "icon.png"
+  },
+  "author": "Karukera SWE-1220",
+  "license": "MIT"
+}

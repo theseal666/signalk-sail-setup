@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sail Setup</title>
+<style>
+body{font-family:Arial,Helvetica,sans-serif;background:#0d1117;color:#e6edf3;margin:0;padding:10px}
+h2{margin:12px 0 6px 0;font-size:16px;color:#79c0ff;text-transform:uppercase;letter-spacing:1px}
+.g{overflow:hidden}
+.g button{float:left;width:31%;margin:1%;height:70px;font-size:22px;border:1px solid #30363d;
+ border-radius:10px;background:#21262d;color:#e6edf3}
+.g button.on{background:#1a7f37;border-color:#2ea043;font-weight:bold}
+.g button:active{opacity:0.7}
+#cur{padding:8px 2px;font-size:15px;color:#e6edf3;border-bottom:1px solid #30363d;margin-bottom:6px}
+#cur b{color:#79c0ff}
+#st{clear:both;padding-top:14px;color:#8b949e;font-size:14px}
+</style>
+</head>
+<body>
+<div id="cur">loading...</div>
+<div id="app"></div>
+<div id="st"></div>
+<script type="text/javascript">
+var BASE='/plugins/signalk-sail-setup';
+function xhr(url,cb){var r=new XMLHttpRequest();r.open('GET',url,true);
+ r.onreadystatechange=function(){if(r.readyState===4)cb(r.status,r.responseText)};r.send();}
+function showSet(set){
+ document.getElementById('cur').innerHTML='Current rig: <b>'+(set&&set.length?set.join(', '):'none')+'</b>';
+}
+function build(data){
+ var html='';
+ for(var i=0;i<data.groups.length;i++){var g=data.groups[i];
+  html+='<h2>'+g.name+'</h2><div class="g" id="g_'+g.name+'">';
+  for(var j=0;j<g.sails.length;j++){var s=g.sails[j];
+   var on=(data.current[g.name]===s)?' class="on"':'';
+   html+='<button'+on+' onclick="tap(\''+g.name+'\',\''+s+'\',this)">'+s+'</button>';}
+  html+='</div>';}
+ document.getElementById('app').innerHTML=html;
+ showSet(data.set);
+}
+function tap(g,v,el){
+ xhr(BASE+'/declare?group='+encodeURIComponent(g)+'&sail='+encodeURIComponent(v),function(st,txt){
+  if(st===200){
+   var btns=document.getElementById('g_'+g).getElementsByTagName('button');
+   for(var i=0;i<btns.length;i++)btns[i].className='';
+   el.className='on';
+   var resp=JSON.parse(txt);
+   showSet(resp.set);
+   document.getElementById('st').innerHTML=g+' = '+v+' logged '+new Date().toUTCString();
+  }else{document.getElementById('st').innerHTML='error: '+txt;}
+ });
+}
+xhr(BASE+'/setup',function(st,txt){
+ if(st===200){build(JSON.parse(txt));}
+ else{document.getElementById('st').innerHTML='cannot load config ('+st+')';}
+});
+</script>
+</body>
+</html>
