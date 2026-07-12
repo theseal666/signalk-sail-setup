@@ -17,6 +17,12 @@ h2{margin:12px 0 6px 0;font-size:16px;color:#79c0ff;text-transform:uppercase;let
 .g button:active{opacity:0.7}
 #cur{padding:8px 2px;font-size:15px;color:#e6edf3;border-bottom:1px solid #30363d;margin-bottom:6px}
 #cur b{color:#79c0ff}
+#hrs{clear:both;margin-top:16px;border-top:1px solid #30363d;padding-top:8px}
+#hrs table{border-collapse:collapse;width:100%;font-size:13px}
+#hrs td{padding:3px 6px;color:#8b949e}
+#hrs td.n{color:#e6edf3;text-align:left}
+#hrs td.h{color:#79c0ff;text-align:right;font-weight:bold;white-space:nowrap}
+#hrs td.s{color:#6e7681;text-align:right;white-space:nowrap}
 #st{clear:both;padding-top:14px;color:#8b949e;font-size:14px}
 </style>
 </head>
@@ -24,17 +30,31 @@ h2{margin:12px 0 6px 0;font-size:16px;color:#79c0ff;text-transform:uppercase;let
 <div id="hd"><img src="icon.png" alt="Sail Setup"><span>SAIL SETUP</span></div>
 <div id="cur">loading...</div>
 <div id="app"></div>
+<div id="hrs"></div>
 <div id="st"></div>
 <script type="text/javascript">
 var BASE='/plugins/signalk-sail-setup';
 function xhr(url,cb){var r=new XMLHttpRequest();r.open('GET',url,true);
  r.onreadystatechange=function(){if(r.readyState===4)cb(r.status,r.responseText)};r.send();}
+var groupOrder=[];
+var lastHours={};
 function showSet(set){
  document.getElementById('cur').innerHTML='Current rig: <b>'+(set&&set.length?set.join(', '):'none')+'</b>';
 }
+function fmtH(h){return (h==null?0:h).toFixed(1)+'h';}
+function showHours(){
+ var rows='';
+ for(var i=0;i<groupOrder.length;i++){var g=groupOrder[i];var h=lastHours[g]||{totalHours:0,bySailHours:{}};
+  var bySail=[];
+  for(var s in h.bySailHours){if(h.bySailHours.hasOwnProperty(s)&&h.bySailHours[s]>0)bySail.push(s+' '+fmtH(h.bySailHours[s]));}
+  rows+='<tr><td class="n">'+g+'</td><td class="h">'+fmtH(h.totalHours)+'</td><td class="s">'+bySail.join(', ')+'</td></tr>';}
+ document.getElementById('hrs').innerHTML='<table>'+rows+'</table>';
+}
 function build(data){
  var html='';
+ groupOrder=[];
  for(var i=0;i<data.groups.length;i++){var g=data.groups[i];
+  groupOrder.push(g.name);
   html+='<h2>'+g.name+'</h2><div class="g" id="g_'+g.name+'">';
   for(var j=0;j<g.sails.length;j++){var s=g.sails[j];
    var on=(data.current[g.name]===s)?' class="on"':'';
@@ -42,6 +62,8 @@ function build(data){
   html+='</div>';}
  document.getElementById('app').innerHTML=html;
  showSet(data.set);
+ lastHours=data.hours||{};
+ showHours();
 }
 function tap(g,v,el){
  xhr(BASE+'/declare?group='+encodeURIComponent(g)+'&sail='+encodeURIComponent(v),function(st,txt){
@@ -51,6 +73,8 @@ function tap(g,v,el){
    for(var i=0;i<btns.length;i++)btns[i].className='';
    if(resp.current){el.className='on';}
    showSet(resp.set);
+   lastHours[g]=resp.hours;
+   showHours();
    document.getElementById('st').innerHTML=g+' = '+(resp.current||'cleared')+' logged '+new Date().toUTCString();
   }else{document.getElementById('st').innerHTML='error: '+txt;}
  });

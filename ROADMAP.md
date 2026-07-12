@@ -37,13 +37,35 @@ don't collide.
 not just the group that changed. That means grepping the file for a sail name
 finds every time it was part of the rig, not just the moment it went up.
 
+## Hours-in-use tracking (done 2026-07-12)
+
+Went with event-based accumulation instead of the originally-planned CSV
+heartbeat sampling - it's exact rather than estimated, and needed a genuine
+design decision: mainsail hours have to keep counting across Full/Reef1/
+Reef2 transitions (it's still "the main"), while individual headsails (J2 vs
+J3) genuinely are different physical sails whose wear you want tracked
+separately.
+
+Solved by tracking hours at two levels from the same accumulator: every
+group-value change "settles" elapsed time into *both* the specific sail's
+bucket (`hours[group].bySail[sail]`) and the group's running total
+(`hours[group].total`), so switching reef points splits time between
+buckets without ever resetting the group total. Persisted to
+`sail-hours.json` alongside `current-sails.json`; if a sail is still up
+across a plugin/server restart the clock (`activeSince`) survives in the
+file and keeps counting the downtime as in-use time, since a restart is a
+process reload, not an unrig.
+
+`sails.hours.<group>` is published as a live SignalK path (seconds) so other
+instruments/dashboards can show "hours on main" directly. Per-sail
+granularity is available via the `/hours` endpoint and the webapp table but
+deliberately not published as individual SignalK paths, to avoid one path
+per sail in the inventory. No reset mechanism - accumulates forever from
+install; retiring a physical sail just means renaming it in config (e.g.
+`J2` → `J2-old`) to freeze its total and start fresh under the old name.
+
 ## Deferred / future work
 
-- **Hourly heartbeat logging** - append a CSV row (or re-emit sails.set) on a
-  fixed interval even with no change, so time-in-use per sail/combo can be
-  computed from CSV alone without reconstructing state by replaying change
-  events. `reemitSeconds` already re-emits the SignalK delta periodically;
-  extending it to also write a heartbeat CSV row is a small follow-up.
 - **Per-sail-set polar** - correlate `sails.set` combos against boat speed /
   TWA / TWS to build performance curves per combination, and compare
   combinations at the same TWA/TWS to see which is faster. Needs a separate

@@ -36,6 +36,16 @@ whenever convenient. No rush and no harm in leaving it.
 |---|---|
 | `sails.<group>` | Current sail name for one group, e.g. `sails.headsail = "J2"` |
 | `sails.set` | Array of every currently active sail across all groups, e.g. `["J2","SS","Full-Reef1"]`; cleared/empty slots omitted. One atomic path for a full-rig snapshot — the join key for any future per-sail-set polar comparison. |
+| `sails.hours.<group>` | Live seconds the group has had *any* sail up, e.g. `sails.hours.mainsail`. Counts continuously across changes within the group - switching Full → Reef1 → Reef2 doesn't reset it, it's still "the main," only clearing the group (or the mast bare) stops the clock. |
+
+Per-sail hours (not just per-group) are tracked internally and available from
+the `/hours` endpoint and the webapp - e.g. how many hours specifically on
+`Reef1` vs `Full`, for wear tracking on individual sails. They're not
+published as individual SignalK paths to avoid one path per sail in your
+inventory; `sails.hours.<group>` is the number other SignalK dashboards/
+instruments can subscribe to directly. Hours accumulate forever from
+whenever the plugin was first installed - there's no reset, and a plugin or
+server restart doesn't lose time for a sail that's still up when it restarts.
 
 <img src="IMG/signalk-data-inspector.png" alt="SignalK Data Inspector showing sails.* deltas" width="600">
 
@@ -48,11 +58,15 @@ polar).
 
 ## Endpoints
 
-* `GET /plugins/signalk-sail-setup/setup` — current groups, sails and state (JSON)
+* `GET /plugins/signalk-sail-setup/setup` — current groups, sails, state and hours (JSON)
 * `GET /plugins/signalk-sail-setup/declare?group=<name>&sail=<sail>` — toggle a
   sail: sets it if it isn't the group's current sail, clears the group if it
   is (GET on purpose — works from MFD browsers that can't do fetch/POST)
-* Webapp: `http://<server>:3000/signalk-sail-setup` — the toggle-button UI
+* `GET /plugins/signalk-sail-setup/hours` — per-group totals and per-sail
+  breakdown, in hours, e.g. `{"mainsail":{"totalHours":16.5,"bySailHours":
+  {"Full":12.3,"Reef1":4.2}}}`
+* Webapp: `http://<server>:3000/signalk-sail-setup` — the toggle-button UI,
+  with an hours table underneath
 
 <img src="IMG/webapp-toggle-ui.png" alt="Toggle-button webapp with current rig shown at top" width="600">
 
