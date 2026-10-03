@@ -9,7 +9,8 @@ module.exports = function (app) {
   }
 
   let options = {}
-  let state = {}
+  let state = {}      // { group: sail } - which sail is up in each group
+  let reefs = {}      // { group: level } - 0 = unreefed, 1..n = index into the group's states list
   let hours = {}       // { group: { bySail: { sail: seconds }, total: seconds } }
   let activeSince = {} // { group: timestampMs } - when the group's current sail went up
   let timer = null
@@ -29,13 +30,17 @@ module.exports = function (app) {
           { name: 'headsail', sails: 'JZ, J2, J3, J3.5' },
           { name: 'staysail', sails: 'SS, GS' },
           { name: 'spinnaker', sails: 'A1, A2, A4, A6, Code0' },
-          { name: 'mainsail', sails: 'Full, Reef1, Reef2, Trysail' }
+          { name: 'mainsail', sails: 'Main, Trysail', states: 'Reef1, Reef2' }
         ],
         items: {
           type: 'object',
           properties: {
             name: { type: 'string', title: 'Group name (becomes path sails.<name>)' },
-            sails: { type: 'string', title: 'Sails (comma-separated)' }
+            sails: { type: 'string', title: 'Sails (comma-separated)' },
+            states: {
+              type: 'string',
+              title: 'Reef states (comma-separated, optional). A reef LADDER applied on top of whichever sail in this group is up: first = 1 reef, second = 2 reefs, and so on. Leave empty for groups where a sail is simply up or down (headsails, spinnakers).'
+            }
           }
         }
       },
@@ -70,17 +75,36 @@ module.exports = function (app) {
   function groups () {
     return (options.groups || []).map(g => ({
       name: (g.name || '').trim(),
-      sails: (g.sails || '').split(',').map(s => s.trim()).filter(Boolean)
-    })).filter(g => g.name && g.sails.length && g.name !== 'set' && g.name !== 'hours') // reserved path prefixes
+      sails: (g.sails || '').split(',').map(s => s.trim()).filter(Boolean),
+      states: (g.states || '').split(',').map(s => s.trim()).filter(Boolean)
+    })).filter(g => g.name && g.sails.length &&
+      g.name !== 'set' && g.name !== 'hours' && g.name !== 'reef') // reserved path prefixes
   }
 
-  // The full current sail set, e.g. ['A4','SS','Full'] - empty/cleared slots omitted.
+  function groupStates (g) {
+    const grp = groups().find(x => x.name === g)
+    return grp ? grp.states : []
+  }
+
+  // Display/log label for a group: the base sail, suffixed with its reef state if any -
+  // 'M1' unreefed, 'M1-Reef2' with the second reef in. The base sail name stays the
+  // leading token so grepping the CSV for 'M1' still finds every row it was up, reefed
+  // or not.
+  function label (g) {
+    const sail = state[g]
+    if (!sail) return null
+    const lvl = reefs[g] || 0
+    const st = groupStates(g)
+    return lvl > 0 && st[lvl - 1] ? sail + '-' + st[lvl - 1] : sail
+  }
+
+  // The full current sail set, e.g. ['A4','SS','M1-Reef2'] - empty/cleared slots omitted.
   // Order follows group config order, so it's stable as long as groups aren't reordered.
   // 'none' is still filtered out for backwards compatibility with configs that list it
   // explicitly as a sail - new configs don't need it, tapping the active button clears it.
   function currentSet () {
     return groups()
-      .map(g => state[g.name])
+      .map(g => label(g.name))
       .filter(v => v && v.toLowerCase() !== 'none')
   }
 
@@ -89,6 +113,19 @@ module.exports = function (app) {
     app.handleMessage(plugin.id, {
       updates: [{
         values: [{ path: 'sails.' + name, value: state[name] || null }]
+      }]
+    })
+  }
+
+  // sails.reef.<group>: current reef level as a number (0 = unreefed, null = nothing up in
+  // that group). Deliberately a sibling path rather than a child of sails.<group>: that
+  // path is a leaf holding the sail name, and SignalK doesn't want a value and children on
+  // the same path. Only emitted for groups that actually define states.
+  function emitReef (name) {
+    if (!groupStates(name).length) return
+    app.handleMessage(plugin.id, {
+      updates: [{
+        values: [{ path: 'sails.reef.' + name, value: state[name] ? (reefs[name] || 0) : null }]
       }]
     })
   }
@@ -139,11 +176,13 @@ module.exports = function (app) {
   }
 
   // Bank whatever time the group's currently-active sail has accrued since the last
-  // settle into the accumulators, then reset the clock. This is what makes mainsail
-  // hours keep counting across Full/Reef1/Reef2 transitions: every settle adds to
-  // BOTH the specific sail's bucket and the group total, regardless of which sail it
-  // was, so switching reef points never loses time off the group's running total -
-  // it just splits it between buckets. If the speed gate says we're not moving, the
+  // settle into the accumulators, then reset the clock. Every settle adds to BOTH the
+  // specific sail's bucket and the group total, so swapping M1 for M2 mid-passage splits
+  // time between their buckets without ever resetting the group's "hours on the main".
+  // Note it keys on the BASE sail (state[g]) and not on label(g): a reef change settles
+  // like any other change, but banks into the same bucket it came from, because reefing
+  // in and out is the same physical sail taking the same wear. Reef-level history lives
+  // in the CSV instead. If the speed gate says we're not moving, the
   // elapsed span is discarded instead of banked - that's the "at the dock" pause.
   function settle (g) {
     const since = activeSince[g]
@@ -199,13 +238,29 @@ module.exports = function (app) {
   }
 
   function emitAll () {
-    Object.keys(state).forEach(emitGroup)
+    Object.keys(state).forEach(g => { emitGroup(g); emitReef(g) })
     emitSet()
     if (hoursEnabled()) emitHours()
   }
 
+  // v2 adds reef levels alongside the sails. A v1 file is a flat { group: sail } map with
+  // no version key, so upgrading keeps whatever was up and starts it unreefed.
   function saveState () {
-    try { fs.writeFileSync(stateFile, JSON.stringify(state)) } catch (e) { app.error('' + e) }
+    try {
+      fs.writeFileSync(stateFile, JSON.stringify({ v: 2, sails: state, reefs: reefs }))
+    } catch (e) { app.error('' + e) }
+  }
+
+  function loadState () {
+    let saved = {}
+    try { saved = JSON.parse(fs.readFileSync(stateFile, 'utf8')) } catch (e) { saved = {} }
+    if (saved && saved.v === 2) {
+      state = saved.sails || {}
+      reefs = saved.reefs || {}
+    } else {
+      state = saved || {}
+      reefs = {}
+    }
   }
 
   function saveHours () {
@@ -214,7 +269,9 @@ module.exports = function (app) {
 
   // CSV ground-truth log: one row per change, plus the full set at that moment so you
   // can grep the file for a sail name and see every time it was part of the rig, not
-  // just the moment its own group changed. Empty sail cell = group was cleared.
+  // just the moment its own group changed. The sail cell carries the reef state too
+  // ('M1-Reef2'), which keeps the column count unchanged while making the log the record
+  // of reef history - hours deliberately don't split by reef. Empty sail cell = cleared.
   // 'trigger' distinguishes a button press ('user') from the auto-clear-at-the-dock
   // safety net ('auto'), so the log stays trustworthy about what actually happened.
   function logChange (g, trigger) {
@@ -222,7 +279,7 @@ module.exports = function (app) {
       const csv = path.join(app.getDataDirPath(), 'sail-log.csv')
       if (!fs.existsSync(csv)) fs.writeFileSync(csv, 'utc,group,sail,set,trigger\n')
       const setField = '"' + currentSet().join('|') + '"'
-      fs.appendFileSync(csv, new Date().toISOString() + ',' + g + ',' + (state[g] || '') + ',' + setField + ',' + trigger + '\n')
+      fs.appendFileSync(csv, new Date().toISOString() + ',' + g + ',' + (label(g) || '') + ',' + setField + ',' + trigger + '\n')
     } catch (e) { app.error('' + e) }
   }
 
@@ -243,7 +300,9 @@ module.exports = function (app) {
     activeGroups.forEach(g => {
       if (hoursEnabled()) { settle(g.name); activeSince[g.name] = null }
       state[g.name] = null
+      reefs[g.name] = 0
       emitGroup(g.name)
+      emitReef(g.name)
       logChange(g.name, 'auto')
     })
     saveState()
@@ -258,7 +317,7 @@ module.exports = function (app) {
     options = opts || {}
     stateFile = path.join(app.getDataDirPath(), 'current-sails.json')
     hoursFile = path.join(app.getDataDirPath(), 'sail-hours.json')
-    try { state = JSON.parse(fs.readFileSync(stateFile, 'utf8')) } catch (e) { state = {} }
+    loadState()
     try {
       const saved = JSON.parse(fs.readFileSync(hoursFile, 'utf8'))
       hours = saved.hours || {}
@@ -298,40 +357,85 @@ module.exports = function (app) {
 
   plugin.registerWithRouter = function (router) {
     router.get('/setup', (req, res) => {
-      res.json({ groups: groups(), current: state, set: currentSet(), hours: hoursEnabled() ? hoursSummary() : null })
+      res.json({
+        groups: groups(),
+        current: state,
+        reefs: reefs,
+        set: currentSet(),
+        hours: hoursEnabled() ? hoursSummary() : null
+      })
     })
     router.get('/hours', (req, res) => {
       if (!hoursEnabled()) return res.json({ enabled: false })
       res.json(hoursSummary())
     })
-    // GET so it works from the most limited MFD browsers (no fetch/POST needed)
-    // Every button is a real toggle: tapping the sail that's already set for this
-    // group clears the group instead of re-setting it - no dedicated "none" button needed.
+    // GET so it works from the most limited MFD browsers (no fetch/POST needed).
+    // Two shapes, one endpoint:
+    //   ?group=mainsail&sail=M1    - which sail is up in that group
+    //   ?group=mainsail&state=Reef2 - how deeply that sail is reefed
+    // Every button is a real toggle: tapping the sail that's already set for this group
+    // clears the group instead of re-setting it, and tapping the reef level that's already
+    // in shakes everything out back to full - no dedicated 'none' or 'full' button needed.
     router.get('/declare', (req, res) => {
       const g = req.query.group
       const v = req.query.sail
+      const st = req.query.state
       const grp = groups().find(x => x.name === g)
-      if (!grp || grp.sails.indexOf(v) < 0) {
-        return res.status(400).json({ ok: false, error: 'unknown group or sail' })
+      if (!grp) return res.status(400).json({ ok: false, error: 'unknown group' })
+      if (v !== undefined && st !== undefined) {
+        return res.status(400).json({ ok: false, error: 'pass either sail or state, not both' })
+      }
+      if (v === undefined && st === undefined) {
+        return res.status(400).json({ ok: false, error: 'missing sail or state' })
+      }
+      if (v !== undefined && grp.sails.indexOf(v) < 0) {
+        return res.status(400).json({ ok: false, error: 'unknown sail' })
+      }
+      if (st !== undefined && grp.states.indexOf(st) < 0) {
+        return res.status(400).json({ ok: false, error: 'unknown state' })
+      }
+      // A reef is a state OF a sail, so there has to be one up to reef. Without this the
+      // group could end up carrying a reef level with no sail, which sails.set can't
+      // express and the hours clock has nothing to bank against.
+      if (st !== undefined && !state[g]) {
+        return res.status(409).json({ ok: false, error: 'no sail set in ' + g })
       }
       // Any button press is evidence someone's actively there - resets the auto-clear
       // countdown. Otherwise hoisting the main head-to-wind (boat sitting at ~0kn or
       // even briefly reversing while you sort out halyards/sheets) would look exactly
       // like "abandoned at the dock" and could clear itself mid-hoist.
       stationarySince = null
-      if (hoursEnabled()) settle(g) // bank whatever time the previous sail (if any) has accrued before switching
-      const turningOff = state[g] === v
-      state[g] = turningOff ? null : v
-      if (hoursEnabled()) {
-        activeSince[g] = turningOff ? null : Date.now()
-        saveHours()
+      if (hoursEnabled()) settle(g) // bank time accrued so far before anything changes
+      if (st !== undefined) {
+        // Reef ladder, not independent flags: the states list is ordered, so Reef2 means
+        // level 2 and implies the first reef is in. Tapping the level that's already set
+        // goes back to full; tapping a lower one than you're on shakes out down to it.
+        const lvl = grp.states.indexOf(st) + 1
+        reefs[g] = (reefs[g] || 0) === lvl ? 0 : lvl
+      } else {
+        const turningOff = state[g] === v
+        state[g] = turningOff ? null : v
+        // Changing or dousing the sail resets the ladder - a new hoist starts unreefed,
+        // and a cleared group has nothing to carry a reef level for.
+        reefs[g] = 0
+        if (hoursEnabled()) activeSince[g] = turningOff ? null : Date.now()
       }
+      if (hoursEnabled()) saveHours()
       saveState()
       emitGroup(g)
+      emitReef(g)
       emitSet()
       if (hoursEnabled()) emitHours()
       logChange(g, 'user')
-      res.json({ ok: true, group: g, current: state[g], set: currentSet(), hours: hoursEnabled() ? hoursSummary()[g] : null })
+      res.json({
+        ok: true,
+        group: g,
+        current: state[g],
+        reef: reefs[g] || 0,
+        label: label(g),
+        set: currentSet(),
+        hours: hoursEnabled() ? hoursSummary()[g] : null
+      })
     })
   }
 

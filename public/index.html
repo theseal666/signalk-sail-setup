@@ -15,6 +15,11 @@ h2{margin:12px 0 6px 0;font-size:16px;color:#79c0ff;text-transform:uppercase;let
  border-radius:10px;background:#21262d;color:#e6edf3}
 .g button.on{background:#1a7f37;border-color:#2ea043;font-weight:bold}
 .g button:active{opacity:0.7}
+/* Reef states sit under their group's sails: shorter, amber when in, so one glance
+   separates "which sail" from "how deep it's reefed". Dimmed until a sail is up. */
+.g.st button{height:48px;font-size:18px}
+.g.st button.on{background:#9e6a03;border-color:#d29922;color:#fff}
+.g.st button.dis{opacity:0.3}
 #cur{padding:8px 2px;font-size:15px;color:#e6edf3;border-bottom:1px solid #30363d;margin-bottom:6px}
 #cur b{color:#79c0ff}
 #hrs{clear:both;margin-top:16px;border-top:1px solid #30363d;padding-top:8px}
@@ -37,6 +42,9 @@ var BASE='/plugins/signalk-sail-setup';
 function xhr(url,cb){var r=new XMLHttpRequest();r.open('GET',url,true);
  r.onreadystatechange=function(){if(r.readyState===4)cb(r.status,r.responseText)};r.send();}
 var groupOrder=[];
+var groupDefs={};
+var cur={};      // group -> sail up
+var reefs={};    // group -> reef level, 0 = unreefed
 var lastHours={};
 function showSet(set){
  document.getElementById('cur').innerHTML='Current rig: <b>'+(set&&set.length?set.join(', '):'none')+'</b>';
@@ -51,34 +59,59 @@ function showHours(){
   rows+='<tr><td class="n">'+g+'</td><td class="h">'+fmtH(h.totalHours)+'</td><td class="s">'+bySail.join(', ')+'</td></tr>';}
  document.getElementById('hrs').innerHTML='<table>'+rows+'</table>';
 }
+// Rendered from the local model rather than by poking classNames on the clicked element:
+// a reef tap changes nothing about which sail button is lit and vice versa, and the reef
+// row highlights cumulatively, so it's simpler to redraw the group than to patch it.
+function renderGroup(g){
+ var grp=groupDefs[g];
+ var h='';
+ for(var j=0;j<grp.sails.length;j++){var s=grp.sails[j];
+  h+='<button class="'+(cur[g]===s?'on':'')+'" onclick="tap(\''+g+'\',\''+s+'\')">'+s+'</button>';}
+ document.getElementById('g_'+g).innerHTML=h;
+ if(!grp.states||!grp.states.length)return;
+ var hs='';
+ for(var k=0;k<grp.states.length;k++){var st=grp.states[k];
+  // Every reef up to the current level lights up: two reefs in shows both buttons amber.
+  var on=cur[g]&&(reefs[g]||0)>=k+1;
+  hs+='<button class="'+(on?'on':(cur[g]?'':'dis'))+'" onclick="tapState(\''+g+'\',\''+st+'\')">'+st+'</button>';}
+ document.getElementById('s_'+g).innerHTML=hs;
+}
 function build(data){
  var html='';
  groupOrder=[];
  for(var i=0;i<data.groups.length;i++){var g=data.groups[i];
   groupOrder.push(g.name);
-  html+='<h2>'+g.name+'</h2><div class="g" id="g_'+g.name+'">';
-  for(var j=0;j<g.sails.length;j++){var s=g.sails[j];
-   var on=(data.current[g.name]===s)?' class="on"':'';
-   html+='<button'+on+' onclick="tap(\''+g.name+'\',\''+s+'\',this)">'+s+'</button>';}
-  html+='</div>';}
+  groupDefs[g.name]=g;
+  html+='<h2>'+g.name+'</h2><div class="g" id="g_'+g.name+'"></div>';
+  if(g.states&&g.states.length)html+='<div class="g st" id="s_'+g.name+'"></div>';}
  document.getElementById('app').innerHTML=html;
+ cur=data.current||{};
+ reefs=data.reefs||{};
+ for(var k=0;k<groupOrder.length;k++)renderGroup(groupOrder[k]);
  showSet(data.set);
  lastHours=data.hours||null;
  showHours();
 }
-function tap(g,v,el){
- xhr(BASE+'/declare?group='+encodeURIComponent(g)+'&sail='+encodeURIComponent(v),function(st,txt){
-  if(st===200){
-   var resp=JSON.parse(txt);
-   var btns=document.getElementById('g_'+g).getElementsByTagName('button');
-   for(var i=0;i<btns.length;i++)btns[i].className='';
-   if(resp.current){el.className='on';}
-   showSet(resp.set);
-   if(resp.hours){if(!lastHours)lastHours={};lastHours[g]=resp.hours;}else{lastHours=null;}
+function declare(g,qs){
+ xhr(BASE+'/declare?group='+encodeURIComponent(g)+qs,function(code,txt){
+  if(code===200){
+   var r=JSON.parse(txt);
+   cur[g]=r.current;
+   reefs[g]=r.reef;
+   renderGroup(g);
+   showSet(r.set);
+   if(r.hours){if(!lastHours)lastHours={};lastHours[g]=r.hours;}else{lastHours=null;}
    showHours();
-   document.getElementById('st').innerHTML=g+' = '+(resp.current||'cleared')+' logged '+new Date().toUTCString();
+   document.getElementById('st').innerHTML=g+' = '+(r.label||'cleared')+' logged '+new Date().toUTCString();
   }else{document.getElementById('st').innerHTML='error: '+txt;}
  });
+}
+function tap(g,v){declare(g,'&sail='+encodeURIComponent(v));}
+function tapState(g,st){
+ // A reef is a state of a sail, so there has to be one up first - say so instead of
+ // firing a request the plugin will refuse.
+ if(!cur[g]){document.getElementById('st').innerHTML='set a '+g+' first, then reef it';return;}
+ declare(g,'&state='+encodeURIComponent(st));
 }
 xhr(BASE+'/setup',function(st,txt){
  if(st===200){build(JSON.parse(txt));}
