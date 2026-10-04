@@ -4,11 +4,12 @@
 
 SignalK plugin to declare which sails are currently up, for logging and for a
 future per-sail-set polar comparison. Configure your sail inventory as groups
-(headsail, staysail, spinnaker/assy/zero, mainsail — reef points are just
-"sails" within the mainsail group), then tap big toggle buttons to log
-whichever combination is flying. Every button is a real toggle: tap a sail to
-set it, tap the same (now highlighted) button again to drop it - no dedicated
-"none"/"off" button needed. Built to work from a phone and from a B&G/Navico
+(headsail, staysail, spinnaker/assy/zero, mainsail), then tap big toggle
+buttons to log whichever combination is flying. Every button is a real toggle:
+tap a sail to set it, tap the same (now highlighted) button again to drop it -
+no dedicated "none"/"off" button needed. Groups can also carry **reef states**,
+so a mainsail group with two mains (`M1, M2`) and two reefs each is a sail
+choice plus a reef level, not four mutually-exclusive "sails". Built to work from a phone and from a B&G/Navico
 MFD tile via [signalk-mfd-plugin](https://github.com/htool/signalk-mfd-plugin).
 
 ## Configuration
@@ -19,7 +20,17 @@ Under **Server → Plugin Config → Sail Setup**:
   and a comma-separated list of sails, e.g. `headsail: JZ, J2, J3, J3.5`. No
   need to list a `none`/`off` entry - tapping the active sail again clears the
   group. Add/remove/rename groups and sails freely. Group names must be
-  unique and can't be `set` (that path is reserved, see below).
+  unique and can't be `set`, `hours` or `reef` (reserved paths, see below).
+* **Reef states** — optional per group, a comma-separated ordered ladder, e.g.
+  `mainsail: sails = M1, M2` with `states = Reef1, Reef2`. States apply to
+  whichever sail in that group is up, so you pick the main and then reef it
+  rather than treating each reef as its own sail. The list is a *ladder*, not
+  independent flags: the second entry means two reefs and implies the first is
+  in. Tapping a reef you're not on sets it; tapping the one you are on shakes
+  out that single reef (two reefs → one, not → full), because that's the
+  actual manoeuvre. Changing or dousing the sail resets the ladder, and
+  reefing with nothing up is refused. Leave empty for groups where a sail is
+  simply up or down.
 * **Re-emit interval** — how often (seconds) the current state is re-published
   even with no change, so it's present in every log window. `0` disables it.
 * **Hours tracking** — on by default; turn it off to skip accumulating and
@@ -61,13 +72,16 @@ whenever convenient. No rush and no harm in leaving it.
 
 | Path | Meaning |
 |---|---|
-| `sails.<group>` | Current sail name for one group, e.g. `sails.headsail = "J2"` |
-| `sails.set` | Array of every currently active sail across all groups, e.g. `["J2","SS","Full-Reef1"]`; cleared/empty slots omitted. One atomic path for a full-rig snapshot — the join key for any future per-sail-set polar comparison. |
-| `sails.hours.<group>` | Live seconds the group has had *any* sail up, e.g. `sails.hours.mainsail`. Counts continuously across changes within the group - switching Full → Reef1 → Reef2 doesn't reset it, it's still "the main," only clearing the group (or the mast bare) stops the clock. |
+| `sails.<group>` | Current sail name for one group, e.g. `sails.headsail = "J2"`. Stays the bare sail name (`"M1"`) even when reefed, so it always matches a sail in your config. |
+| `sails.reef.<group>` | Current reef level as a number — `0` unreefed, `1` first reef, `2` second, `null` when nothing is up in that group. Only published for groups that define states. A sibling path rather than a child of `sails.<group>`, since that path is a leaf holding the sail name. |
+| `sails.set` | Array of every currently active sail across all groups, reef state included, e.g. `["J2","SS","M1-Reef2"]`; cleared/empty slots omitted. One atomic path for a full-rig snapshot — the join key for any future per-sail-set polar comparison. |
+| `sails.hours.<group>` | Live seconds the group has had *any* sail up, e.g. `sails.hours.mainsail`. Counts continuously across changes within the group - swapping M1 for M2 doesn't reset it, it's still "the main," only clearing the group (or the mast bare) stops the clock. |
 
 Per-sail hours (not just per-group) are tracked internally and available from
 the `/hours` endpoint and the webapp - e.g. how many hours specifically on
-`Reef1` vs `Full`, for wear tracking on individual sails. They're not
+`M1` vs `M2`, for wear tracking on individual sails. Reef level deliberately
+does *not* split those buckets: reefing in and out is the same physical sail
+taking the same wear, so reef history lives in the CSV instead. They're not
 published as individual SignalK paths to avoid one path per sail in your
 inventory; `sails.hours.<group>` is the number other SignalK dashboards/
 instruments can subscribe to directly. Hours accumulate forever from
@@ -79,7 +93,11 @@ server restart doesn't lose time for a sail that's still up when it restarts.
 Every change is also appended to a CSV ground-truth log
 (`<SignalK data dir>/signalk-sail-setup/sail-log.csv`, columns
 `utc,group,sail,set,trigger`) so you can grep for a sail name and see every
-time it was part of the rig, not just the moment its own group changed.
+time it was part of the rig, not just the moment its own group changed. The
+`sail` cell carries the reef state too (`M1-Reef2`), with the sail name as the
+leading token so grepping for `M1` still finds every row it was up, reefed or
+not - which makes the CSV the record of reef history, since hours don't split
+by reef.
 `trigger` is `user` for a button press or `auto` for the at-the-dock
 auto-clear. See [ROADMAP.md](ROADMAP.md) for planned work (per-sail-set
 polar comparison).
@@ -90,9 +108,12 @@ polar comparison).
 * `GET /plugins/signalk-sail-setup/declare?group=<name>&sail=<sail>` — toggle a
   sail: sets it if it isn't the group's current sail, clears the group if it
   is (GET on purpose — works from MFD browsers that can't do fetch/POST)
+* `GET /plugins/signalk-sail-setup/declare?group=<name>&state=<state>` — same
+  endpoint, but sets the group's reef level instead: the named state if you're
+  not on it, one reef less if you are. `409` if no sail is up in that group
 * `GET /plugins/signalk-sail-setup/hours` — per-group totals and per-sail
   breakdown, in hours, e.g. `{"mainsail":{"totalHours":16.5,"bySailHours":
-  {"Full":12.3,"Reef1":4.2}}}`
+  {"M1":12.3,"M2":4.2}}}`
 * Webapp: `http://<server>:3000/signalk-sail-setup` — the toggle-button UI,
   with an hours table underneath
 

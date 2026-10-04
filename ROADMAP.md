@@ -7,20 +7,22 @@ names (as in the embryo). No sail metadata (area, wind range, id) - if that's
 ever needed for real polar work, it can be added later without breaking this.
 
 Front-of-mast groups in front of the mast (headsail, staysail, spinnaker/assy/
-zero) each hold a single mutually-exclusive value. The mainsail group works
-the same way, with reef states modeled as "sails" (Full, Reef1, Reef2, ...)
-so the button UI stays uniform across all groups.
+zero) each hold a single mutually-exclusive value. The mainsail group
+originally worked the same way, with reef states modeled as "sails" (Full,
+Reef1, Reef2, ...) so the button UI stayed uniform across all groups - see
+"Reefs are states, not sails" below for why that didn't survive contact with a
+second mainsail.
 
 SignalK paths emitted:
 - `sails.<group>` - current value for one group, e.g. `sails.headsail = "A4"`.
   Kept from the embryo for simple per-group subscriptions.
 - `sails.set` - array of every currently-active sail across all groups, empty/
-  "none" slots omitted, e.g. `["A4","SS","Full-Reef1"]`. This is the one to
+  "none" slots omitted, e.g. `["A4","SS","M1-Reef1"]`. This is the one to
   subscribe to for a single-glance view of the whole rig, and the join key
   for any future performance analysis (see below). Order follows group config
   order, not alphabetical.
-- Group name `set` is reserved (can't be used as a group name - would collide
-  with the array path).
+- Group names `set`, `hours` and `reef` are reserved (would collide with the
+  array path and the two path prefixes).
 
 We deliberately did *not* align with the official `SignalK/sailsconfiguration`
 plugin's `sails.inventory.<id>` convention - that plugin models a sail
@@ -41,10 +43,10 @@ finds every time it was part of the rig, not just the moment it went up.
 
 Went with event-based accumulation instead of the originally-planned CSV
 heartbeat sampling - it's exact rather than estimated, and needed a genuine
-design decision: mainsail hours have to keep counting across Full/Reef1/
-Reef2 transitions (it's still "the main"), while individual headsails (J2 vs
-J3) genuinely are different physical sails whose wear you want tracked
-separately.
+design decision: mainsail hours have to keep counting across reef changes and
+across a swap from one main to another (it's still "the main"), while
+individual headsails (J2 vs J3) genuinely are different physical sails whose
+wear you want tracked separately.
 
 Solved by tracking hours at two levels from the same accumulator: every
 group-value change "settles" elapsed time into *both* the specific sail's
@@ -96,6 +98,51 @@ Implementation is event-based (subscribes to the speed path via
 `app.streambundle`, checks on every new value plus a periodic tick as a
 fallback) rather than polling, so it reacts as fast as the boat's own speed
 source updates.
+
+## Reefs are states, not sails (changed 2026-10-04)
+
+Two mainsails, two reefs each, broke the original "reefs are just sails in the
+mainsail group" model outright: with `mainsail: M1, M2, Reef1, Reef2`, `Reef1`
+is a *sibling* of `M1`, so tapping it replaced the sail instead of reefing it.
+The rig genuinely has two dimensions - which main is up, and how deeply it's
+reefed - and one mutually-exclusive value can't hold both.
+
+Groups now take an optional ordered `states` ladder that applies to whichever
+sail in the group is up. Stateless groups are untouched, so headsail/staysail/
+spinnaker behave exactly as before and existing configs don't change meaning.
+
+Decisions worth keeping a record of:
+
+- **Ladder, not independent flags.** Reefs are ordinal: the second reef implies
+  the first is in. So the level is a single number (0..n) rather than a set of
+  booleans, which also keeps `sails.reef.<group>` a plain number other
+  instruments can display or threshold.
+- **Tapping the active reef steps down one, not to full.** First attempt
+  cleared the whole ladder (2 → 0), on the theory that it matched the
+  tap-to-clear idiom of the sail buttons. Wrong manoeuvre: shaking out the
+  second reef leaves the first one in. 2 → 1, and tapping the lower button
+  again gets you to full.
+- **`sails.<group>` stays the bare sail name**, with the level in a separate
+  `sails.reef.<group>`. A child path under `sails.<group>` isn't an option -
+  that path is a leaf holding the sail name, and SignalK doesn't want a value
+  and children on the same path. Keeping the sail name bare also means the
+  value always matches something in the config, which a composite wouldn't.
+- **The composite only appears where it's a label**: `sails.set` and the CSV's
+  `sail` cell (`M1-Reef2`), with the sail name as the leading token so grepping
+  for `M1` still finds every row. That keeps the CSV's column count unchanged,
+  so no existing log needs migrating - and the CSV becomes the record of reef
+  history, since:
+- **Hours bucket on the base sail, never on the reef state.** M1 reefed and M1
+  full are the same physical sail taking the same wear; splitting them would
+  scatter M1's total across three buckets and leave no single "hours on M1"
+  number. Reef changes still settle the clock (so no time is lost) but bank
+  into the bucket they came from.
+- **Reefing with nothing up is refused** (409) rather than silently stored: a
+  group carrying a reef level with no sail is a state `sails.set` can't express
+  and the hours clock has nothing to bank against.
+- `current-sails.json` gained a version field (`v: 2`) to carry the reef levels.
+  A v1 flat `{ group: sail }` map still loads, keeping whatever was up and
+  starting it unreefed.
 
 ## Deferred / future work
 

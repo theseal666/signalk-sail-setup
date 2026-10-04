@@ -375,7 +375,7 @@ module.exports = function (app) {
     //   ?group=mainsail&state=Reef2 - how deeply that sail is reefed
     // Every button is a real toggle: tapping the sail that's already set for this group
     // clears the group instead of re-setting it, and tapping the reef level that's already
-    // in shakes everything out back to full - no dedicated 'none' or 'full' button needed.
+    // in shakes that one reef out - no dedicated 'none' or 'full' button needed.
     router.get('/declare', (req, res) => {
       const g = req.query.group
       const v = req.query.sail
@@ -408,10 +408,13 @@ module.exports = function (app) {
       if (hoursEnabled()) settle(g) // bank time accrued so far before anything changes
       if (st !== undefined) {
         // Reef ladder, not independent flags: the states list is ordered, so Reef2 means
-        // level 2 and implies the first reef is in. Tapping the level that's already set
-        // goes back to full; tapping a lower one than you're on shakes out down to it.
+        // level 2 and implies the first reef is in. Tapping a level you're not on sets it,
+        // tapping the one you ARE on shakes out a single reef (2 -> 1), because that's the
+        // manoeuvre - shaking out the second reef leaves the first one in. Going straight
+        // from 2 to full is the lower button: tapping Reef1 from level 2 sets 1, tapping
+        // it again drops to 0.
         const lvl = grp.states.indexOf(st) + 1
-        reefs[g] = (reefs[g] || 0) === lvl ? 0 : lvl
+        reefs[g] = (reefs[g] || 0) === lvl ? lvl - 1 : lvl
       } else {
         const turningOff = state[g] === v
         state[g] = turningOff ? null : v
